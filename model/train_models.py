@@ -145,10 +145,10 @@ def get_models(task, balance=False):
                 ('classifier', LogisticRegression(max_iter=1000, multi_class='multinomial', 
                                                 class_weight=class_weight, random_state=42))
             ]),
-            'svm': Pipeline([
-                ('scaler', StandardScaler()),
-                ('classifier', SVC(probability=True, class_weight=class_weight, random_state=42))
-            ]),
+            # 'svm': Pipeline([
+            #     ('scaler', StandardScaler()),
+            #     ('classifier', SVC(probability=True, class_weight=class_weight, random_state=42))
+            # ]),
             'rf': Pipeline([
                 ('classifier', RandomForestClassifier(n_estimators=100, class_weight=class_weight, random_state=42))
             ]),
