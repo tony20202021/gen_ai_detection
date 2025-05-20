@@ -16,12 +16,15 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import joblib
 
+# Создаем директорию для логов, если её нет
+os.makedirs("../logs", exist_ok=True)
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("embeddings_extraction.log"),
+        logging.FileHandler("../logs/embeddings_extraction.log"),
         logging.StreamHandler()
     ]
 )
@@ -37,7 +40,7 @@ def parse_args():
                         help='Размер батча для обработки текстов')
     parser.add_argument('--max_length', type=int, default=512, 
                         help='Максимальная длина текста (в токенах)')
-    parser.add_argument('--output_dir', type=str, default='data/embeddings',
+    parser.add_argument('--output_dir', type=str, default='../results/embeddings',
                         help='Директория для сохранения эмбедингов')
     parser.add_argument('--reduce_dim', action='store_true',
                         help='Применить понижение размерности (PCA и t-SNE)')
@@ -45,7 +48,7 @@ def parse_args():
 
 def get_data_path(task):
     """Получение путей к файлам данных в зависимости от задачи"""
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     data_dir = os.path.join(base_dir, "data")
     
     if task == 1:
@@ -129,7 +132,9 @@ def main():
     # Загружаем данные
     logger.info(f"Загрузка данных для задачи {args.task}")
     try:
+        logger.info(f"train_path {train_path}")
         train_df = pd.read_json(train_path, lines=True)
+        logger.info(f"val_path {val_path}")
         val_df = pd.read_json(val_path, lines=True)
         logger.info(f"Загружено {len(train_df)} тренировочных и {len(val_df)} валидационных примеров")
     except Exception as e:
@@ -188,4 +193,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

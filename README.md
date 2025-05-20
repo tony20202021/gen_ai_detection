@@ -21,6 +21,10 @@
   - Оценка соответствия кластеров истинным меткам
   - Анализ сложных для классификации примеров
 
+- **Генерация файлов для отправки**:
+  - Автоматическая генерация предсказаний в формате, требуемом соревнованием PAN 2025
+  - Поддержка различных форматов классов для обеих задач
+
 ## Установка и настройка
 
 ### Требования
@@ -40,10 +44,8 @@
 2. Создать и активировать окружение:
    ```bash
    # Для Linux/macOS
-   bash setup_environment.sh
-   
-   # Для Windows
-   setup_environment.bat
+   conda env create -f environment.yml
+   conda activate amikhalev_gen_ai_detection
    ```
 
 ### Скачивание данных
@@ -51,13 +53,13 @@
 Запустите скрипты для скачивания данных:
 ```bash
 # Для задачи 1 (бинарная классификация)
-python download_task1_data.py
+python gen_ai_detection/scripts/download_task1_data.py
 
 # Для задачи 2 (многоклассовая классификация)
-python download_task2_data.py
+python gen_ai_detection/scripts/download_task2_data.py
 
 # Или скачайте все данные сразу
-bash download_all_data.sh
+bash gen_ai_detection/scripts/download_all_data.sh
 ```
 
 ## Использование
@@ -68,10 +70,7 @@ bash download_all_data.sh
 
 ```bash
 # Для Linux/macOS
-bash run_pipeline.sh -t 1 -m sentence-transformers/all-mpnet-base-v2
-
-# Для Windows
-run_pipeline.bat -t 1 -m sentence-transformers/all-mpnet-base-v2
+bash ./scripts/run_pipeline.sh -t 2 -m sentence-transformers/all-mpnet-base-v2
 ```
 
 Параметры запуска:
@@ -88,49 +87,62 @@ run_pipeline.bat -t 1 -m sentence-transformers/all-mpnet-base-v2
 #### 1. Извлечение эмбедингов
 
 ```bash
-python extract_embeddings.py --task 1 --model sentence-transformers/all-mpnet-base-v2 --reduce_dim
+python gen_ai_detection/src/extract_embeddings.py --task 1 --model sentence-transformers/all-mpnet-base-v2 --reduce_dim
 ```
 
 #### 2. Кластеризация
 
 ```bash
-python clustering.py --task 1 --embeddings_path data/embeddings/task1_embeddings_all-mpnet-base-v2_with_dim_reduction.pkl --method kmeans --use_pca
+python gen_ai_detection/src/clustering.py --task 1 --embeddings_path gen_ai_detection/results/embeddings/task1_embeddings_all-mpnet-base-v2_with_dim_reduction.pkl --method kmeans --use_pca
 ```
 
 #### 3. Обучение моделей
 
 ```bash
-python train_models.py --task 1 --embeddings_path data/embeddings/task1_embeddings_all-mpnet-base-v2_with_dim_reduction.pkl --model_type all --balance
+python gen_ai_detection/src/train_models.py --task 1 --embeddings_path gen_ai_detection/results/embeddings/task1_embeddings_all-mpnet-base-v2_with_dim_reduction.pkl --model_type all --balance
 ```
 
-#### 4. Визуализация результатов
+#### 4. Генерация файлов для отправки
 
 ```bash
-jupyter notebook visualize_embeddings.ipynb
+python gen_ai_detection/src/generate_submissions.py --task 1 --model_path gen_ai_detection/results/models/task1_xgb_model_20250516_120000.joblib --test_data_path path/to/test_data.jsonl --version v01
+```
+
+#### 5. Визуализация результатов
+
+```bash
+jupyter notebook gen_ai_detection/notebooks/visualize_embeddings.ipynb
 ```
 
 ## Структура проекта
 
 ```
-.
+gen_ai_detection/
 ├── data/                              # Директория с данными
 │   ├── task1/                         # Данные для бинарной классификации
-│   ├── task2/                         # Данные для многоклассовой классификации
-│   ├── embeddings/                    # Извлеченные эмбединги
-│   └── clustering/                    # Результаты кластеризации
-├── models/                            # Обученные модели
-├── results/                           # Результаты и метрики
-├── download_task1_data.py             # Скрипт для скачивания данных (задача 1)
-├── download_task2_data.py             # Скрипт для скачивания данных (задача 2)
-├── download_all_data.sh               # Скрипт для скачивания всех данных
-├── extract_embeddings.py              # Скрипт для извлечения эмбедингов
-├── clustering.py                      # Скрипт для кластеризации
-├── train_models.py                    # Скрипт для обучения моделей
-├── visualize_embeddings.ipynb         # Ноутбук для визуализации результатов
-├── run_pipeline.sh                    # Скрипт для запуска полного пайплайна (Linux/macOS)
-├── run_pipeline.bat                   # Скрипт для запуска полного пайплайна (Windows)
-├── setup_environment.sh               # Скрипт для настройки окружения (Linux/macOS)
-├── setup_environment.bat              # Скрипт для настройки окружения (Windows)
+│   └── task2/                         # Данные для многоклассовой классификации
+├── gen_ai_detection/                  # Основной код проекта
+│   ├── logs/                          # Логи выполнения скриптов
+│   ├── notebooks/                     # Jupyter ноутбуки для анализа
+│   │   └── visualize_embeddings.ipynb # Ноутбук для визуализации результатов
+│   ├── results/                       # Результаты работы скриптов
+│   │   ├── clustering/                # Результаты кластеризации
+│   │   ├── embeddings/                # Извлеченные эмбединги
+│   │   ├── encoders/                  # Сохраненные LabelEncoder для задач
+│   │   ├── models/                    # Обученные модели
+│   │   └── submissions/               # Сгенерированные файлы для отправки
+│   ├── scripts/                       # Вспомогательные скрипты
+│   │   ├── download_all_data.sh       # Скрипт для скачивания всех данных
+│   │   ├── download_task1_data.py     # Скрипт для скачивания данных задачи 1
+│   │   ├── download_task2_data.py     # Скрипт для скачивания данных задачи 2
+│   │   ├── run_pipeline.sh            # Скрипт для запуска полного пайплайна
+│   │   └── setup_environment.sh       # Скрипт для настройки окружения
+│   └── src/                           # Исходный код проекта
+│       ├── clustering.py              # Скрипт для кластеризации
+│       ├── extract_embeddings.py      # Скрипт для извлечения эмбедингов
+│       ├── generate_submissions.py    # Скрипт для генерации предсказаний
+│       ├── train_models.py            # Скрипт для обучения моделей
+│       └── utils_visualization.py     # Модуль визуализации
 ├── environment.yml                    # Конфигурация окружения conda
 ├── requirements.txt                   # Зависимости Python
 └── README.md                          # Документация проекта
@@ -172,6 +184,14 @@ jupyter notebook visualize_embeddings.ipynb
 
 Модели обучаются с учетом несбалансированности классов и оцениваются с использованием кросс-валидации.
 
+### 5. Генерация предсказаний для отправки
+
+Реализован механизм генерации предсказаний для новых данных с использованием обученных моделей:
+- Автоматическое извлечение эмбедингов из тестовых текстов
+- Применение обученной модели для получения предсказаний
+- Корректная обработка меток для многоклассовой задачи (отображение в числовые идентификаторы 0-5)
+- Сохранение предсказаний в требуемом JSONL формате для отправки
+
 ## Особенности данных и рекомендации
 
 - **Несбалансированность классов**: Особенно заметна в задаче многоклассовой классификации. Рекомендуется использовать взвешенные метрики и методы балансировки.
@@ -189,6 +209,8 @@ jupyter notebook visualize_embeddings.ipynb
 3. **Аугментация данных**: Для недопредставленных классов можно применять техники аугментации текстов.
 
 4. **Предобучение на дополнительных данных**: Использование моделей, предобученных на задачах обнаружения сгенерированных текстов.
+
+5. **Пост-обработка предсказаний**: Калибровка вероятностей и использование различных порогов для повышения точности на отдельных классах.
 
 ## Вклад в проект
 

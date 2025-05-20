@@ -10,6 +10,11 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Определение путей
+SRC_DIR="../src"
+LOG_DIR="../logs"
+RESULTS_DIR="../results"
+
 # Функция для вывода статусов
 log() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
@@ -53,6 +58,8 @@ USE_PCA=true
 BALANCE=true
 MODEL_TYPE="all"
 GRID_SEARCH=false
+VERSION="v01"
+GENERATE_SUBMISSIONS=true
 
 # Вывод помощи
 show_help() {
@@ -67,6 +74,8 @@ show_help() {
     echo "  --no-balance              Не учитывать несбалансированность классов"
     echo "  --model-type TYPE         Тип модели для обучения (logistic, svm, rf, xgb, mlp, all, по умолчанию: all)"
     echo "  --grid-search             Выполнить поиск гиперпараметров с помощью GridSearchCV"
+    echo "  --version VERSION         Версия отправки (по умолчанию: v01)"
+    echo "  --no-submissions          Не генерировать предсказания для отправки"
     echo "  -h, --help                Показать эту справку"
     echo ""
     echo "Пример: ./run_pipeline.sh -t 2 -m sentence-transformers/all-mpnet-base-v2 --grid-search"
@@ -111,6 +120,14 @@ while [[ $# -gt 0 ]]; do
             GRID_SEARCH=true
             shift
             ;;
+        --version)
+            VERSION="$2"
+            shift 2
+            ;;
+        --no-submissions)
+            GENERATE_SUBMISSIONS=false
+            shift
+            ;;
         -h|--help)
             show_help
             exit 0
@@ -123,37 +140,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Определение путей
-BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPTS_DIR="${BASE_DIR}/scripts"
-DATA_DIR="${BASE_DIR}/data"
-MODELS_DIR="${BASE_DIR}/models"
-RESULTS_DIR="${BASE_DIR}/results"
-
-# Проверка наличия данных
-if [ ! -d "${DATA_DIR}/task${TASK}" ]; then
-    warning "Директория с данными для задачи ${TASK} не найдена."
-    read -p "Хотите скачать данные сейчас? (y/n): " choice
-    if [ "$choice" = "y" ]; then
-        log "Скачивание данных для задачи ${TASK}..."
-        python "${SCRIPTS_DIR}/download_task${TASK}_data.py"
-    else
-        error "Данные для задачи ${TASK} отсутствуют. Запустите скрипт ${SCRIPTS_DIR}/download_task${TASK}_data.py."
-        exit 1
-    fi
-fi
-
 # Создание необходимых директорий
 log "Создание необходимых директорий..."
-mkdir -p "${DATA_DIR}/embeddings"
-mkdir -p "${DATA_DIR}/clustering"
-mkdir -p "${MODELS_DIR}"
-mkdir -p "${RESULTS_DIR}"
+mkdir -p "$LOG_DIR"
+mkdir -p "$RESULTS_DIR/embeddings"
+mkdir -p "$RESULTS_DIR/clustering"
+mkdir -p "$RESULTS_DIR/models"
+mkdir -p "$RESULTS_DIR/submissions"
+mkdir -p "$RESULTS_DIR/encoders"
 
 # Шаг 1: Извлечение эмбедингов
 log "Шаг 1: Извлечение эмбедингов из текстов..."
-EMBEDDINGS_PATH="${DATA_DIR}/embeddings/task${TASK}_embeddings_$(basename ${MODEL// /_}).pkl"
-EMBEDDINGS_WITH_DIM_PATH="${DATA_DIR}/embeddings/task${TASK}_embeddings_$(basename ${MODEL// /_})_with_dim_reduction.pkl"
+EMBEDDINGS_PATH="$RESULTS_DIR/embeddings/task${TASK}_embeddings_$(basename ${MODEL// /_}).pkl"
+EMBEDDINGS_WITH_DIM_PATH="$RESULTS_DIR/embeddings/task${TASK}_embeddings_$(basename ${MODEL// /_})_with_dim_reduction.pkl"
 
 # Проверка наличия файла эмбедингов
 if [ -f "$EMBEDDINGS_WITH_DIM_PATH" ]; then
@@ -164,19 +163,19 @@ if [ -f "$EMBEDDINGS_WITH_DIM_PATH" ]; then
     else
         # Запуск извлечения эмбедингов
         log "Извлечение эмбедингов с моделью: $MODEL"
-        python extract_embeddings.py --task $TASK --model $MODEL --batch_size $BATCH_SIZE --max_length $MAX_LENGTH --output_dir "${DATA_DIR}/embeddings" --reduce_dim
+        python "$SRC_DIR/extract_embeddings.py" --task $TASK --model $MODEL --batch_size $BATCH_SIZE --max_length $MAX_LENGTH --output_dir "$RESULTS_DIR/embeddings" --reduce_dim
         success "Эмбединги успешно извлечены"
     fi
 else
     # Запуск извлечения эмбедингов
     log "Извлечение эмбедингов с моделью: $MODEL"
-    python extract_embeddings.py --task $TASK --model $MODEL --batch_size $BATCH_SIZE --max_length $MAX_LENGTH --output_dir "${DATA_DIR}/embeddings" --reduce_dim
+    python "$SRC_DIR/extract_embeddings.py" --task $TASK --model $MODEL --batch_size $BATCH_SIZE --max_length $MAX_LENGTH --output_dir "$RESULTS_DIR/embeddings" --reduce_dim
     success "Эмбединги успешно извлечены"
 fi
 
 # Шаг 2: Кластеризация эмбедингов
 log "Шаг 2: Кластеризация эмбедингов методом $CLUSTERING_METHOD..."
-CLUSTERING_PATH="${DATA_DIR}/clustering/task${TASK}_${CLUSTERING_METHOD}_clustering_results.pkl"
+CLUSTERING_PATH="$RESULTS_DIR/clustering/task${TASK}_${CLUSTERING_METHOD}_clustering_results.pkl"
 
 # Проверка наличия файла результатов кластеризации
 if [ -f "$CLUSTERING_PATH" ]; then
@@ -188,9 +187,9 @@ if [ -f "$CLUSTERING_PATH" ]; then
         # Запуск кластеризации
         log "Выполнение кластеризации методом $CLUSTERING_METHOD..."
         if [ "$USE_PCA" = true ]; then
-            python clustering.py --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir "${DATA_DIR}/clustering" --method $CLUSTERING_METHOD --use_pca
+            python "$SRC_DIR/clustering.py" --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir "$RESULTS_DIR/clustering" --method $CLUSTERING_METHOD --use_pca
         else
-            python clustering.py --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir "${DATA_DIR}/clustering" --method $CLUSTERING_METHOD
+            python "$SRC_DIR/clustering.py" --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir "$RESULTS_DIR/clustering" --method $CLUSTERING_METHOD
         fi
         success "Кластеризация успешно завершена"
     fi
@@ -198,9 +197,9 @@ else
     # Запуск кластеризации
     log "Выполнение кластеризации методом $CLUSTERING_METHOD..."
     if [ "$USE_PCA" = true ]; then
-        python clustering.py --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir "${DATA_DIR}/clustering" --method $CLUSTERING_METHOD --use_pca
+        python "$SRC_DIR/clustering.py" --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir "$RESULTS_DIR/clustering" --method $CLUSTERING_METHOD --use_pca
     else
-        python clustering.py --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir "${DATA_DIR}/clustering" --method $CLUSTERING_METHOD
+        python "$SRC_DIR/clustering.py" --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir "$RESULTS_DIR/clustering" --method $CLUSTERING_METHOD
     fi
     success "Кластеризация успешно завершена"
 fi
@@ -208,8 +207,38 @@ fi
 # Шаг 3: Обучение и оценка моделей
 log "Шаг 3: Обучение и оценка моделей классификации..."
 
+# Проверка наличия моделей
+MODEL_TYPES=("logistic" "svm" "rf" "xgb" "mlp")
+FOUND_MODELS=()
+MISSING_MODELS=()
+
+if [ "$MODEL_TYPE" = "all" ]; then
+    # Проверяем наличие моделей всех типов
+    for TYPE in "${MODEL_TYPES[@]}"; do
+        if ls "$RESULTS_DIR/models/task${TASK}_${TYPE}_model_"*.joblib 1> /dev/null 2>&1; then
+            MODEL_FILES=($(ls "$RESULTS_DIR/models/task${TASK}_${TYPE}_model_"*.joblib))
+            # Добавляем найденные модели в список
+            for MODEL_FILE in "${MODEL_FILES[@]}"; do
+                FOUND_MODELS+=("$(basename "$MODEL_FILE")")
+            done
+        else
+            MISSING_MODELS+=("$TYPE")
+        fi
+    done
+else
+    # Проверяем наличие моделей конкретного типа
+    if ls "$RESULTS_DIR/models/task${TASK}_${MODEL_TYPE}_model_"*.joblib 1> /dev/null 2>&1; then
+        MODEL_FILES=($(ls "$RESULTS_DIR/models/task${TASK}_${MODEL_TYPE}_model_"*.joblib))
+        for MODEL_FILE in "${MODEL_FILES[@]}"; do
+            FOUND_MODELS+=("$(basename "$MODEL_FILE")")
+        done
+    else
+        MISSING_MODELS+=("$MODEL_TYPE")
+    fi
+fi
+
 # Формирование команды с параметрами
-TRAIN_CMD="python train_models.py --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir ${MODELS_DIR} --model_type $MODEL_TYPE"
+TRAIN_CMD="python $SRC_DIR/train_models.py --task $TASK --embeddings_path $EMBEDDINGS_WITH_DIM_PATH --output_dir $RESULTS_DIR/models --model_type $MODEL_TYPE"
 
 if [ "$USE_PCA" = true ]; then
     TRAIN_CMD="$TRAIN_CMD --use_pca"
@@ -223,31 +252,89 @@ if [ "$GRID_SEARCH" = true ]; then
     TRAIN_CMD="$TRAIN_CMD --grid_search"
 fi
 
-# Запуск обучения моделей
-log "Выполнение команды: $TRAIN_CMD"
-$TRAIN_CMD
-
-if [ $? -eq 0 ]; then
-    success "Обучение и оценка моделей успешно завершены"
+# Проверка и запрос пользователю
+if [ ${#FOUND_MODELS[@]} -gt 0 ]; then
+    warning "Найдены следующие модели для задачи $TASK:"
+    for MODEL_FILE in "${FOUND_MODELS[@]}"; do
+        echo "  - $MODEL_FILE"
+    done
+    
+    if [ ${#MISSING_MODELS[@]} -gt 0 ]; then
+        warning "Не найдены модели следующих типов:"
+        for TYPE in "${MISSING_MODELS[@]}"; do
+            echo "  - $TYPE"
+        done
+    fi
+    
+    read -p "Пересоздать все модели? (y/n): " choice
+    if [ "$choice" != "y" ]; then
+        success "Используем существующие модели"
+    else
+        # Запуск обучения моделей
+        log "Выполнение команды: $TRAIN_CMD"
+        $TRAIN_CMD
+        
+        if [ $? -eq 0 ]; then
+            success "Обучение и оценка моделей успешно завершены"
+        else
+            error "Ошибка при обучении моделей"
+            exit 1
+        fi
+    fi
 else
-    error "Ошибка при обучении моделей"
-    exit 1
+    warning "Не найдено моделей для задачи $TASK" $([ "$MODEL_TYPE" != "all" ] && echo "и типа $MODEL_TYPE")
+    
+    # Запуск обучения моделей
+    log "Выполнение команды: $TRAIN_CMD"
+    $TRAIN_CMD
+    
+    if [ $? -eq 0 ]; then
+        success "Обучение и оценка моделей успешно завершены"
+    else
+        error "Ошибка при обучении моделей"
+        exit 1
+    fi
 fi
 
-# Шаг 4: Визуализация результатов
-log "Шаг 4: Визуализация эмбедингов и результатов в Jupyter Notebook..."
-log "Для визуализации результатов запустите Jupyter Notebook с файлом:"
-log "    jupyter notebook ${BASE_DIR}/model/visualize_embeddings.ipynb"
+# Шаг 4: Генерация предсказаний для отправки
+if [ "$GENERATE_SUBMISSIONS" = true ]; then
+    log "Шаг 4: Генерация предсказаний для отправки..."
+    
+    # Формирование команды с параметрами
+    SUBMIT_CMD="python $SRC_DIR/generate_submissions.py --task $TASK --output_dir $RESULTS_DIR/submissions --version $VERSION"
+    
+    # Добавляем параметр model_type только если он не равен "all"
+    if [ "$MODEL_TYPE" != "all" ]; then
+        SUBMIT_CMD="$SUBMIT_CMD --model_type $MODEL_TYPE"
+    fi
+    
+    # Запуск генерации предсказаний
+    log "Выполнение команды: $SUBMIT_CMD"
+    $SUBMIT_CMD
+    
+    if [ $? -eq 0 ]; then
+        success "Генерация предсказаний успешно завершена"
+    else
+        error "Ошибка при генерации предсказаний"
+    fi
+else
+    log "Пропуск генерации предсказаний (--no-submissions)"
+fi
 
 success "Пайплайн успешно выполнен!"
 echo ""
 echo "Созданные файлы и директории:"
+echo "  Логи: $LOG_DIR/"
 echo "  Эмбединги: $EMBEDDINGS_WITH_DIM_PATH"
 echo "  Результаты кластеризации: $CLUSTERING_PATH"
-echo "  Модели: ${MODELS_DIR}/task${TASK}_*_model_*.joblib"
-echo "  Метрики: ${MODELS_DIR}/task${TASK}_metrics_*.json"
+echo "  Модели: $RESULTS_DIR/models/task${TASK}_*_model_*.joblib"
+echo "  Метрики: $RESULTS_DIR/models/task${TASK}_metrics_*.json"
+if [ "$GENERATE_SUBMISSIONS" = true ]; then
+    echo "  Предсказания: $RESULTS_DIR/submissions/task_${TASK}_anton_mikhalev_*_${VERSION}*.jsonl"
+fi
+
 echo ""
 echo "Следующие шаги:"
 echo "  1. Просмотрите визуализацию эмбедингов и кластеров в Jupyter Notebook"
 echo "  2. Изучите метрики моделей и выберите лучшую для вашей задачи"
-echo "  3. Примените выбранную модель к новым данным для определения генеративного ИИ"
+echo "  3. Используйте готовые предсказания или примените выбранную модель к новым данным"

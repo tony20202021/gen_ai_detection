@@ -26,12 +26,15 @@ import json
 from datetime import datetime
 import joblib
 
+# Создаем директорию для логов, если её нет
+os.makedirs("../logs", exist_ok=True)
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("train_models.log"),
+        logging.FileHandler("../logs/train_models.log"),
         logging.StreamHandler()
     ]
 )
@@ -44,7 +47,7 @@ def parse_args():
     parser.add_argument('--embeddings_path', type=str, required=True,
                         help='Путь к файлу с эмбедингами')
     parser.add_argument('--output_dir', type=str, default=None,
-                        help='Директория для сохранения обученных моделей (по умолчанию: ../models)')
+                        help='Директория для сохранения обученных моделей (по умолчанию: ../results/models)')
     parser.add_argument('--use_pca', action='store_true',
                         help='Использовать PCA-эмбединги, если доступны')
     parser.add_argument('--cv', type=int, default=5,
@@ -61,8 +64,7 @@ def parse_args():
     
     # Установка значения по умолчанию для output_dir, если не указано
     if args.output_dir is None:
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        args.output_dir = os.path.join(base_dir, "models")
+        args.output_dir = os.path.join("..", "results", "models")
         
     return args
 
@@ -293,8 +295,7 @@ def plot_results(results, output_dir, task):
     os.makedirs(output_dir, exist_ok=True)
     
     # Определим директорию для результатов
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    results_dir = os.path.join(base_dir, "results")
+    results_dir = os.path.join("..", "results")
     os.makedirs(results_dir, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -369,6 +370,15 @@ def main():
         logger.info("Преобразование текстовых меток в числовые")
         label_encoder = LabelEncoder()
         y = label_encoder.fit_transform(y)
+        # Сохраняем маппинг для дальнейшего использования
+        label_mapping = {i: label for i, label in enumerate(label_encoder.classes_)}
+        logger.info(f"Маппинг меток: {label_mapping}")
+        
+        # Сохраняем label_encoder для использования при генерации предсказаний
+        os.makedirs(os.path.join("..", "results", "encoders"), exist_ok=True)
+        with open(os.path.join("..", "results", "encoders", f"task{args.task}_label_encoder.pkl"), 'wb') as f:
+            pickle.dump(label_encoder, f)
+        logger.info(f"LabelEncoder сохранен для задачи {args.task}")
     
     # Разделение на тренировочную и валидационную выборки по метке 'split'
     if 'split' in metadata.columns:

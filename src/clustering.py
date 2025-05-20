@@ -18,12 +18,15 @@ from tqdm import tqdm
 import joblib
 from collections import Counter
 
+# Создаем директорию для логов, если её нет
+os.makedirs("../logs", exist_ok=True)
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("clustering.log"),
+        logging.FileHandler("../logs/clustering.log"),
         logging.StreamHandler()
     ]
 )
@@ -36,7 +39,7 @@ def parse_args():
     parser.add_argument('--embeddings_path', type=str, required=True,
                         help='Путь к файлу с эмбедингами')
     parser.add_argument('--output_dir', type=str, default=None,
-                        help='Директория для сохранения результатов (по умолчанию: ../data/clustering)')
+                        help='Директория для сохранения результатов (по умолчанию: ../results/clustering)')
     parser.add_argument('--n_clusters', type=int, default=None,
                         help='Количество кластеров (по умолчанию: число уникальных меток)')
     parser.add_argument('--method', type=str, default='kmeans',
@@ -48,8 +51,7 @@ def parse_args():
     
     # Установка значения по умолчанию для output_dir, если не указано
     if args.output_dir is None:
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        args.output_dir = os.path.join(base_dir, "data", "clustering")
+        args.output_dir = os.path.join("..", "results", "clustering")
     
     return args
 
